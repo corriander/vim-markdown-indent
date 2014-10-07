@@ -6,7 +6,7 @@ if exists("b:did_indent") | finish | endif
 let b:did_indent = 1
 
 " indentexp is the heart of this, the function returns the indent
-setlocal indentexpr=GetPDMIndent()
+setlocal indentexpr=GetPDMIndent(v:lnum)
 
 setlocal nolisp			" lisp indent overrides, cancel it
 setlocal nosmartindent	" not sure this is necessary
@@ -15,43 +15,59 @@ setlocal autoindent
 " Only define the function once
 if exists("*GetPDMIndent") | finish | endif
 
+let s:LISTINDENT = 4  " TODO: Consider implications of changing this.
+let s:NOCHANGE = -1   " indentexpr value of -1 means no-op.
+
 " Functions {{{1
-function! s:is_line_start(line)
-    return a:line !~ '^ *\([*-]\)\%( *\1\)\{2}\%( \|\1\)*$' &&
-      \    a:line =~ '^\s*[*+-] \+'
+
+" Line type checks {{{2
+" Returns boolean
+function! s:is_list_item_head(line)
+	let s:pattern_list_item_head = '^\s*[*+-] \+'
+    return a:line =~ s:pattern_list_item_head
 endfunction
 
+" Returns boolean
 function! s:is_blank_line(line)
     return a:line =~ '^$'
 endfunction
+" 2}}
 
-function! s:last_nonblank_line(line)
-    let i = a:lnum
-    while i > 1 && s:is_blank_line(getline(i))
-        let i -= 1
-    endwhile
-    return i
-endfunction
+" Big Daddy {{{2
+function GetPDMIndent(lnum)
+    " Find the nearest non-blank line before the current one.
+    let plnum = prevnonblank(a:lnum - 1)
 
-function GetPDMIndent()
-    let list_ind = 4
-    " Find a non-blank line above the current line.
-    let lnum = last_nonblank_line(v:lnum - 1)
-    " At the start of the file use zero indent.
-    if lnum == 0 | return 0 | endif
-    let ind = indent(lnum)
-    let line = getline(lnum)    " Last line
-    let cline = getline(v:lnum) " Current line
-    if s:is_line_start(cline) 
-        " Current line is the first line of a list item, do not change indent
-        return indent(v:lnum)
-    elseif s:is_line_start(line)
-        " Last line is the first line of a list item, increase indent
-        return ind + list_ind
-    else
-        return ind
-    endif
+	if plnum == 0
+		" This is the first non-empty line, do not indent.
+		return 0
+	endif
+
+	if (a:lnum - plnum) > 2
+		" Assume more than one blank line is a semantic break, leave
+		" the indentation alone
+		return s:NOCHANGE
+	endif
+
+	" If we got this far, we need to look a little closer
+	let current_line = getline(a:lnum)
+	let previous_nbline = getline(plnum)		" previous non-blank
+
+	" Checking whether we are in a list
+	if s:is_list_item_head(current_line)
+		" Do not change the indentation, assume it is as intended
+		return s:NOCHANGE
+	endif
+
+	if s:is_list_item_head(previous_nbline)
+		" Indent according to constant value
+		return s:LISTINDENT " TODO: nested lists?
+	endif
+
+	" Otherwise, leave indentation up to the user.
+	return s:NOCHANGE
 endfunction
+" 2}}}
 " }}}
 
 " vim: foldmethod=marker
